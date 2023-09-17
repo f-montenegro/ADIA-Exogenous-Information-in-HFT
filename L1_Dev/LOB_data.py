@@ -29,43 +29,21 @@ class DataLOB:
     ask_ct_N: The number of ask orders at level N (top level if N=00).
     """
 
-    def __init__(self, dataset: str, resample_freq: str,
-                 date: datetime, start: str, end: str, end_hour: int, end_minute: int, t_days: int):
+
+    def __init__(self, dataset: str, API_key: str, resample_freq: str, date: datetime, end_hour: int, end_minute: int, t_days: int):
 
         self.dataset = dataset
+        self.API_key = API_key
         self.resample_freq = resample_freq
-        self.start = start
-        self.end = end
-        self.date = date
+        self.date = date # datetime object datetime(YYYY, MM, DD, HH, MM) for (MM/DD/YYYY), at HH:MM AM
         self.end_hour = end_hour
         self.end_minute = end_minute
         self.t_days = t_days
 
-    def get_mbp_data(self, symbol):
-        """
-        MBP (Market-by-Price) provides changes to and snapshots of aggregated book depth, keyed by price.
-        This is limited to a fixed number of levels from the top. We denote number of levels displayed
-        in the schema with a suffix, such as mbp-1 and mbp-10.
-        """
-
-        client = db.Historical("db-SEbmRhQ3ekjnrdRQLfK4iDYJhVkrL")
-        data_mbp = client.timeseries.get_range(dataset=self.dataset,
-                                               start=self.start,
-                                               end=self.end,
-                                               symbols=symbol,
-                                               schema="mbp-10")
-
-        data_mbp = data_mbp.to_df()
-        data_mbp = data_mbp.set_index('ts_event')
-
-        return data_mbp
 
     def build_data_set(self, symbol):
-        """
-        date: datetime object datetime(YYYY, MM, DD, HH, MM) for (MM/DD/YYYY), at HH:MM AM
-        """
-
-        data_df = pd.DataFrame()
+        """ This function gets data from databento """
+        df = pd.DataFrame()
         count_days = 0
 
         for i in range(self.t_days):
@@ -76,7 +54,21 @@ class DataLOB:
             start_iso = start.isoformat()[:16]
             end_iso = end.isoformat()[:16]
 
-            data = self.get_mbp_data(dataset="XNAS.ITCH", start=start_iso, end=end_iso, symbol=symbol)
+            # ================================= databento API =================================================
+            """
+            MBP (Market-by-Price) provides changes to and snapshots of aggregated book depth, keyed by price.
+            This is limited to a fixed number of levels from the top. We denote number of levels displayed
+            in the schema with a suffix, such as mbp-1 and mbp-10.
+            """
+            client = db.Historical(self.API_key)
+            data = client.timeseries.get_range(dataset=self.dataset,
+                                               start=start_iso,
+                                               end=end_iso,
+                                               symbols=symbol,
+                                               schema="mbp-10")
+            data = data.to_df()
+            data = data.set_index('ts_event')
+            # ===================================================================================================
 
             if len(data.index) != 0:
                 count_days += 1
@@ -86,64 +78,85 @@ class DataLOB:
 
                 mask = (data["action"] == "T") & (data["depth"] == 0)
                 data = data[mask]
-                data_df = pd.concat([data_df, data], axis=0)
+                df = pd.concat([df, data], axis=0)
 
-        return data_df, count_days
+        return df, count_days
 
-    def get_mid_price(self, df_input: pd.DataFrame, type_mid: str):
-        """
-        Calculate mid price per minute
-        """
+
+    def get_mid_price(self, df_input: pd.DataFrame, type_mid: str, drop_na: bool):
+        """ Calculate mid price per minute """
 
         df = df_input.copy()
         return_df = pd.DataFrame()
 
+        # Calculate the mid-price using the last observation
         if type_mid == "last":
-            df_resampled = df.resample(self.resample_freq).last().dropna()
+            if drop_na:
+                df_resampled = df.resample(self.resample_freq).last().dropna()
+            else:
+                df_resampled = df.resample(self.resample_freq).last()
             return_df[f"mid-price_{type_mid}"] = (df_resampled["bid_px_00"] + df_resampled["ask_px_00"]) * 0.5
             return return_df
 
+        # Calculate the mid-price as the average mid-price during the resample_freq
         if type_mid == "mean":
             return_df[f"mid-price_{type_mid}"] = (df["bid_px_00"] + df["ask_px_00"]) * 0.5
-            return_df = return_df.resample(self.resample_freq).mean().dropna()
+            if drop_na:
+                return_df = return_df.resample(self.resample_freq).mean().dropna()
+            else:
+                return_df = return_df.resample(self.resample_freq).mean()
             return return_df
 
+        # Calculate the mid-price using Volume Weighted Mid-Price (VWMP)
         if type_mid == "vwmp":
-            df["vwbp_denominator"] = (df["bid_px_00"] * df["bid_sz_00"])
-            df["vwap_denominator"] = (df["ask_px_00"] * df["ask_sz_00"])
+            df["vwbp_denominator"] = (df["bid_px_00"] * df["bid_sz_00"]) # Volume weighted bid price denominator
+            df["vwap_denominator"] = (df["ask_px_00"] * df["ask_sz_00"]) # Volume weighted ask price denominator
 
             df_resampled = df.resample(self.resample_freq).agg(['sum', 'count'])
+            # Flatten the MultiIndex for easier filtering
             df_resampled.columns = ['_'.join(col).strip() for col in df_resampled.columns.values]
 
+            mask_index = df_resampled.index
             mask = np.all([(df_resampled[f"{col}_sum"] == 0) & (df_resampled[f"{col}_count"] == 0)
                            for col in df.columns], axis=0)
+            # Convert list to Series with the given index
+            mask = pd.Series(mask, index=mask_index)
 
-            df_resampled = df_resampled.loc[~mask]
+            if drop_na:
+                # Filter DataFrame to remove np.nan 
+                df_resampled = df_resampled.loc[~mask]
+            else:
+                # Apply mask to all columns using where to keep np.nan
+                df_resampled = df_resampled.where(~mask, np.nan)
 
             vwbp = df_resampled["vwbp_denominator_sum"] / df_resampled["bid_sz_00_sum"]
             vwap = df_resampled["vwap_denominator_sum"] / df_resampled["ask_sz_00_sum"]
             return_df[f"mid-price_{type_mid}"] = (vwbp + vwap) * 0.5
             return return_df
 
-    def periodicity_estimator_taylor_and_xu(self, df_input, window_size, count_days):
+
+    @staticmethod
+    def calculate_return(df_input: pd.DataFrame, column_name: str):
         """
-        The non-parametric periodicity estimator proposed by Taylor and Xu (1997) is based on the standard deviation (SD) of all
-        standardized returns belonging to the same local window
+        [62] L. M. Calcagnile, G. Bormetti, M. Treccani, S. Marmi,
+        and F. Lillo, Quantitative Finance 18, 237 (2018).
         """
 
         df = df_input.copy()
-        df["across_days_std"] = [df[df.index.time == i]["log_return"].std() for i in
-                                 pd.unique(df.index.time)] * count_days
-        df["across_days_std_2"] = df["across_days_std"] ** 2
+        array = np.array(df[column_name])
 
-        kwargs = {'column_name': "across_days_std_2",
-                  "window_size": window_size}
+        counter = 1
+        for i in range(1, len(array)):
+            if not np.isnan(array[i]):
+                df.at[df.index[i], "log-returns"] = 1 / np.sqrt(counter) * np.log(array[i] / array[i - counter])
+                counter = 1
+            else:
+                counter += 1
 
-        df = df.groupby(df.index.date, group_keys=False).apply(self.rolling_std, **kwargs)
-        df["periodicity"] = df["across_days_std"] / np.sqrt(df["rolling_std"] / window_size)
-        df.drop(columns=["across_days_std", "across_days_std_2", "rolling_std"], inplace=True)
+        df = df.iloc[1:, :]
 
         return df
+
 
     @staticmethod
     def sqrt_root_average_realised_bipower_variation(df_input: pd.DataFrame, column_name: str, k: int):
@@ -176,27 +189,27 @@ class DataLOB:
 
         return df
 
-    @staticmethod
-    def calculate_return(df_input: pd.DataFrame, column_name: str):
+
+    def periodicity_estimator_taylor_and_xu(self, df_input, window_size, count_days):
         """
-        [62] L. M. Calcagnile, G. Bormetti, M. Treccani, S. Marmi,
-        and F. Lillo, Quantitative Finance 18, 237 (2018).
+        The non-parametric periodicity estimator proposed by Taylor and Xu (1997) is based on the standard deviation (SD) of all
+        standardized returns belonging to the same local window
         """
 
         df = df_input.copy()
-        array = np.array(df[column_name])
+        df["across_days_std"] = [df[df.index.time == i]["log_return"].std() for i in
+                                 pd.unique(df.index.time)] * count_days
+        df["across_days_std_2"] = df["across_days_std"] ** 2
 
-        counter = 1
-        for i in range(1, len(array)):
-            if not np.isnan(array[i]):
-                df.at[df.index[i], column_name] = 1 / np.sqrt(counter) * np.log(array[i] / array[i - counter])
-                counter = 1
-            else:
-                counter += 1
+        kwargs = {'column_name': "across_days_std_2",
+                  "window_size": window_size}
 
-        df = df.iloc[1:, :]
+        df = df.groupby(df.index.date, group_keys=False).apply(self.rolling_std, **kwargs)
+        df["periodicity"] = df["across_days_std"] / np.sqrt(df["rolling_std"] / window_size)
+        df.drop(columns=["across_days_std", "across_days_std_2", "rolling_std"], inplace=True)
 
         return df
+
 
     @staticmethod
     def rolling_std(df_input, column_name, window_size):
