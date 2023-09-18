@@ -3,11 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import databento as db
 import math
+import sys
 import warnings
+# Ignore all warnings
+warnings.simplefilter(action='ignore', category=Warning)
 
 from datetime import datetime, timedelta
-from scipy.stats import norm
-from numpy import linalg as la
-from scipy.linalg import expm
 from tabulate import tabulate
 from pathlib import Path
