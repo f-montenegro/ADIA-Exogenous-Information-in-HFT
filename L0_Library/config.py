@@ -6,7 +6,7 @@ import math
 import sys
 import warnings
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from tabulate import tabulate
 from pathlib import Path
 

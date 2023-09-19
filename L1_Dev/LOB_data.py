@@ -99,6 +99,11 @@ class DataLOB:
             else:
                 df_resampled = df.resample(self.resample_freq).last()
             return_df[f"mid-price_{type_mid}"] = (df_resampled["bid_px_00"] + df_resampled["ask_px_00"]) * 0.5
+
+            # Filter return_df on mask to remove not desired dates for the DataFrame
+            return_df_index = return_df.index
+            mask = pd.Series((return_df.index.time >= self.date.time()) & ((return_df.index.time <= time(self.end_hour, self.end_minute))), index=return_df_index) 
+            return_df = return_df[mask]
             return return_df
 
         # Calculate the mid-price as the average mid-price during the resample_freq
@@ -108,6 +113,11 @@ class DataLOB:
                 return_df = return_df.resample(self.resample_freq).mean().dropna()
             else:
                 return_df = return_df.resample(self.resample_freq).mean()
+
+            # Filter return_df on mask to remove not desired dates for the DataFrame
+            return_df_index = return_df.index
+            mask = pd.Series((return_df.index.time >= self.date.time()) & ((return_df.index.time <= time(self.end_hour, self.end_minute))), index=return_df_index) 
+            return_df = return_df[mask]
             return return_df
 
         # Calculate the mid-price using Volume Weighted Mid-Price (VWMP)
@@ -138,6 +148,11 @@ class DataLOB:
             vwbp = df_resampled["vwbp_denominator_sum"] / df_resampled["bid_sz_00_sum"]
             vwap = df_resampled["vwap_denominator_sum"] / df_resampled["ask_sz_00_sum"]
             return_df[f"mid-price_{type_mid}"] = (vwbp + vwap) * 0.5
+
+            # Filter return_df on mask to remove not desired dates for the DataFrame
+            return_df_index = return_df.index
+            mask = pd.Series((return_df.index.time >= self.date.time()) & ((return_df.index.time <= time(self.end_hour, self.end_minute))), index=return_df_index) 
+            return_df = return_df[mask]
             return return_df
 
     @staticmethod
