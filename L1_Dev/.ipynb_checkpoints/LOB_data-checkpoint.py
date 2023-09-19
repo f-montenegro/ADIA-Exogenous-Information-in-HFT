@@ -29,21 +29,20 @@ class DataLOB:
     ask_ct_N: The number of ask orders at level N (top level if N=00).
     """
 
+
     def __init__(self, dataset: str, API_key: str, resample_freq: str, date: datetime, end_hour: int, end_minute: int, t_days: int):
 
         self.dataset = dataset
         self.API_key = API_key
         self.resample_freq = resample_freq
-        self.date = date  # datetime object datetime(YYYY, MM, DD, HH, MM) for (MM/DD/YYYY), at HH:MM AM
+        self.date = date # datetime object datetime(YYYY, MM, DD, HH, MM) for (MM/DD/YYYY), at HH:MM AM
         self.end_hour = end_hour
         self.end_minute = end_minute
         self.t_days = t_days
 
-    def build_data_set(self, symbol):
-        """
-        This function gets data from databento
-        """
 
+    def build_data_set(self, symbol):
+        """ This function gets data from databento """
         df = pd.DataFrame()
         count_days = 0
 
@@ -61,7 +60,6 @@ class DataLOB:
             This is limited to a fixed number of levels from the top. We denote number of levels displayed
             in the schema with a suffix, such as mbp-1 and mbp-10.
             """
-
             client = db.Historical(self.API_key)
             data = client.timeseries.get_range(dataset=self.dataset,
                                                start=start_iso,
@@ -78,16 +76,15 @@ class DataLOB:
                              "bid_px_00", "ask_px_00", "bid_sz_00", "ask_sz_00", "bid_ct_00", "ask_ct_00",
                              "bid_px_01", "ask_px_01", "bid_sz_01", "ask_sz_01", "bid_ct_01", "ask_ct_01"]]
 
-                mask = (data["depth"] == 0) | (data["depth"] == 1)
+                mask = (data["action"] == "T") & (data["depth"] == 0)
                 data = data[mask]
                 df = pd.concat([df, data], axis=0)
 
         return df, count_days
 
+
     def get_mid_price(self, df_input: pd.DataFrame, type_mid: str, drop_na: bool):
-        """
-        Calculate mid price per minute
-        """
+        """ Calculate mid price per minute """
 
         df = df_input.copy()
         return_df = pd.DataFrame()
@@ -112,12 +109,10 @@ class DataLOB:
 
         # Calculate the mid-price using Volume Weighted Mid-Price (VWMP)
         if type_mid == "vwmp":
-            df["vwbp_denominator"] = (df["bid_px_00"] * df["bid_sz_00"])  # Volume weighted bid price denominator
-            df["vwap_denominator"] = (df["ask_px_00"] * df["ask_sz_00"])  # Volume weighted ask price denominator
+            df["vwbp_denominator"] = (df["bid_px_00"] * df["bid_sz_00"]) # Volume weighted bid price denominator
+            df["vwap_denominator"] = (df["ask_px_00"] * df["ask_sz_00"]) # Volume weighted ask price denominator
 
-            df_resampled = df.resample(self.resample_freq)\
-                             .agg(['sum', 'count'])
-
+            df_resampled = df.resample(self.resample_freq).agg(['sum', 'count'])
             # Flatten the MultiIndex for easier filtering
             df_resampled.columns = ['_'.join(col).strip() for col in df_resampled.columns.values]
 
@@ -130,7 +125,6 @@ class DataLOB:
             if drop_na:
                 # Filter DataFrame to remove np.nan 
                 df_resampled = df_resampled.loc[~mask]
-
             else:
                 # Apply mask to all columns using where to keep np.nan
                 df_resampled = df_resampled.where(~mask, np.nan)
@@ -139,6 +133,7 @@ class DataLOB:
             vwap = df_resampled["vwap_denominator_sum"] / df_resampled["ask_sz_00_sum"]
             return_df[f"mid-price_{type_mid}"] = (vwbp + vwap) * 0.5
             return return_df
+
 
     @staticmethod
     def calculate_return(df_input: pd.DataFrame, column_name: str):
@@ -161,6 +156,7 @@ class DataLOB:
         df = df.iloc[1:, :]
 
         return df
+
 
     @staticmethod
     def sqrt_root_average_realised_bipower_variation(df_input: pd.DataFrame, column_name: str, k: int):
@@ -193,25 +189,11 @@ class DataLOB:
 
         return df
 
-    @staticmethod
-    def rolling_std(df_input, column_name, window_size):
-        """
-        Create a rolling object with a given window size and minimum period 1
-        min_periods: specifies the minimum number of non-NA/null observations in the window required to have a valid result.
-        """
-
-        df = df_input.copy()
-        if window_size < 3:
-            print("The window size should be greater than 3")
-
-        df['rolling_std'] = df[column_name].rolling(window=window_size, min_periods=1, center=True).std()
-
-        return df
 
     def periodicity_estimator_taylor_and_xu(self, df_input, window_size, count_days):
         """
-        The non-parametric periodicity estimator proposed by Taylor and Xu (1997) is based on the standard deviation
-        (SD) of all standardized returns belonging to the same local window
+        The non-parametric periodicity estimator proposed by Taylor and Xu (1997) is based on the standard deviation (SD) of all
+        standardized returns belonging to the same local window
         """
 
         df = df_input.copy()
@@ -225,5 +207,21 @@ class DataLOB:
         df = df.groupby(df.index.date, group_keys=False).apply(self.rolling_std, **kwargs)
         df["periodicity"] = df["across_days_std"] / np.sqrt(df["rolling_std"] / window_size)
         df.drop(columns=["across_days_std", "across_days_std_2", "rolling_std"], inplace=True)
+
+        return df
+
+
+    @staticmethod
+    def rolling_std(df_input, column_name, window_size):
+        """
+        Create a rolling object with a given window size and minimum period 1
+        min_periods: specifies the minimum number of non-NA/null observations in the window required to have a valid result.
+        """
+
+        df = df_input.copy()
+        if window_size < 3:
+            print("The window size should be greater than 3")
+
+        df['rolling_std'] = df[column_name].rolling(window=window_size, min_periods=1, center=True).std()
 
         return df
