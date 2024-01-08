@@ -1,0 +1,8 @@
+pandas
+matplotlib
+databento
+pytz
+requests
+tabulate
+tqdm
+ipykernel

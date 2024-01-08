@@ -4,5 +4,9 @@
 # Ignore Python bytecode
 __pycache__/
 
-# Specific files to ignore
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
 
+# Specific files/folders to ignore
+Data/
+venv/
