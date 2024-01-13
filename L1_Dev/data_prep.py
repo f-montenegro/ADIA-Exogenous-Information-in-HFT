@@ -67,7 +67,7 @@ class DataPrep:
                                                start=start_iso,
                                                end=end_iso,
                                                symbols=symbol,
-                                               schema='mbp-10')
+                                               schema='mbp-1')
             data = data.to_df()
             data = data.set_index('ts_event')
             # ===================================================================================================
@@ -75,9 +75,11 @@ class DataPrep:
             if len(data.index) != 0:
                 trading_days += 1
                 trading_dates.append(pd.unique(data.index.date)[0])
-                data = data[['symbol', 'action', "side", "depth", "price", "size",
-                             'bid_px_00', 'ask_px_00', "bid_sz_00", "ask_sz_00",
-                             'bid_px_01', 'ask_px_01', "bid_sz_01", "ask_sz_01"]]
+                # data = data[['symbol', 'action', 'side', 'depth', 'price', 'size',
+                #              'bid_px_00', 'ask_px_00', 'bid_sz_00', 'ask_sz_00',
+                #              'bid_px_01', 'ask_px_01', 'bid_sz_01', 'ask_sz_01']]
+                data = data[['symbol', 'action', 'side', 'depth', 'price', 'size',
+                             'bid_px_00', 'ask_px_00', 'bid_sz_00', 'ask_sz_00']]
                 df_result = pd.concat(objs=[df_result, data], axis=0)
 
         # Convert the timezone of the index to time_zone
@@ -120,23 +122,23 @@ class DataPrep:
                 df_result = df_result.resample(resample_freq).last()
 
         # Calculate the mid-price using the average mid-price
-        if type_mid == "mean":
-            df_result[f"mid-price_{type_mid}"] = (df_input["bid_px_00"] + df_input["ask_px_00"]) * 0.5
+        if type_mid == 'mean':
+            df_result[f'mid-price_{type_mid}'] = (df_input['bid_px_00'] + df_input['ask_px_00']) * 0.5
             if drop_na:
                 df_result = df_result.resample(resample_freq).mean().dropna()
             else:
                 df_result = df_result.resample(resample_freq).mean()
 
         # Calculate the mid-price using Volume Weighted Mid-Price (VWMP)
-        if type_mid == "vwmp":
-            df_input["vwbp_denominator"] = (df_input["bid_px_00"] * df_input["bid_sz_00"])
-            df_input["vwap_denominator"] = (df_input["ask_px_00"] * df_input["ask_sz_00"])
+        if type_mid == 'vwmp':
+            df_input['vwbp_denominator'] = (df_input['bid_px_00'] * df_input['bid_sz_00'])
+            df_input['vwap_denominator'] = (df_input['ask_px_00'] * df_input['ask_sz_00'])
 
             df_resampled = df_input.resample(resample_freq).agg(['sum', 'count'])
             df_resampled.columns = ['_'.join(col).strip() for col in df_resampled.columns.values]
 
             mask_index = df_resampled.index
-            mask = np.all([(df_resampled[f"{col}_sum"] == 0) & (df_resampled[f"{col}_count"] == 0)
+            mask = np.all([(df_resampled[f'{col}_sum'] == 0) & (df_resampled[f'{col}_count'] == 0)
                            for col in df_input.columns], axis=0)
             mask = pd.Series(mask, index=mask_index)
 
@@ -145,9 +147,9 @@ class DataPrep:
             else:
                 df_resampled = df_resampled.where(~mask, np.nan)
 
-            vwbp = df_resampled["vwbp_denominator_sum"] / df_resampled["bid_sz_00_sum"]
-            vwap = df_resampled["vwap_denominator_sum"] / df_resampled["ask_sz_00_sum"]
-            df_result[f"mid-price_{type_mid}"] = (vwbp + vwap) * 0.5
+            vwbp = df_resampled['vwbp_denominator_sum'] / df_resampled['bid_sz_00_sum']
+            vwap = df_resampled['vwap_denominator_sum'] / df_resampled['ask_sz_00_sum']
+            df_result[f'mid-price_{type_mid}'] = (vwbp + vwap) * 0.5
 
         start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day, self.start_hour,
                               self.start_minute)
@@ -159,7 +161,7 @@ class DataPrep:
         df_result['Date'] = pd.to_datetime(df_result.index.date, format='%m/%d/%Y')
         df_result['Hour'] = pd.to_datetime(df_result.index.strftime('%H:%M:%S'), format='%H:%M:%S').time
 
-        df_result = df_result.pivot(index='Hour', columns='Date', values=f"mid-price_{type_mid}")
+        df_result = df_result.pivot(index='Hour', columns='Date', values=f'mid-price_{type_mid}')
 
         pd.options.display.float_format = '{:,.5f}'.format
 
