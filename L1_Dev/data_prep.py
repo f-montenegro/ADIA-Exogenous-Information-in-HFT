@@ -16,6 +16,7 @@ class DataPrep:
         end_minute (int): The end minute for data retrieval.
         time_zone (str): The time zone to use for data retrieval and processing.
     """
+
     def __init__(self, API_key: str, dataset: str, time_zone: str, start_date: datetime, start_hour: int,
                  start_minute: int, end_date: datetime, end_hour: int, end_minute: int):
 
@@ -155,8 +156,8 @@ class DataPrep:
         # .resample() creates dates in between dates (i.e: adds np.NaN every minute between 4PM and 9:30AM of next day)
         df_result = df_result[(df_result.index.time >= start_date.time()) & (df_result.index.time < end_date.time())]
 
-        df_result['Date'] = df_result.index.date
-        df_result['Hour'] = df_result.index.strftime('%H:%M:%S')
+        df_result['Date'] = pd.to_datetime(df_result.index.date, format='%m/%d/%Y')
+        df_result['Hour'] = pd.to_datetime(df_result.index.strftime('%H:%M:%S'), format='%H:%M:%S').time
 
         df_result = df_result.pivot(index='Hour', columns='Date', values=f"mid-price_{type_mid}")
 
@@ -282,7 +283,7 @@ class DataPrep:
 
         Parameters:
             df_input (pandas.DataFrame): A DataFrame containing standardized returns in columns.
-
+            threshold (float): value to remove outliers.
         Returns:
             df_result (pandas.DataFrame): A DataFrame with the periodicity measure calculated for each column.
         """
@@ -304,5 +305,17 @@ class DataPrep:
         df_result = df_returns / (np.sqrt(df_bipower_variation) * df_f)
 
         pd.options.display.float_format = '{:,.5f}'.format
+
+        return df_result
+
+    @staticmethod
+    def get_jumps(df_input: pd.DataFrame):
+
+        df_result = df_input.applymap(lambda x: np.nan if np.isnan(x) else 1 if np.abs(x) > 4.36 else 0)
+        df_result.iloc[:15, :] = 0
+        df_result.iloc[375:, :] = 0
+        df_result = df_result.where(df_input.notna(), np.nan)
+
+        pd.options.display.float_format = '{:,.0f}'.format
 
         return df_result
