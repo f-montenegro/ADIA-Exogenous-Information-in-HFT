@@ -70,8 +70,9 @@ class Clusters:
         return df_threshold
 
     @staticmethod
-    def cluster_jumps(df_inter_times: pd.DataFrame, df_threshold: pd.DataFrame, list_dates_w_jumps: list):
-        df_clustered_jumps = df_inter_times.where(df_threshold.notna(), np.nan)
+    def cluster_jumps(df_jumps: pd.DataFrame, df_inter_times: pd.DataFrame, df_threshold: pd.DataFrame,
+                      list_dates_w_jumps: list):
+        df_clustered_jumps = df_jumps.where(df_threshold.notna(), np.nan)
 
         for i in list_dates_w_jumps:
             s_inter_times = df_inter_times[i]
