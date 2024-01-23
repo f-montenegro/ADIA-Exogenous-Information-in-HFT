@@ -10,27 +10,39 @@ class News:
         self.start_date = start_date
         self.end_date = end_date
 
-    def get_news(self, symbol: list, items: int, page: int, news_type: str):
-
+    def get_news(self, symbol: list, news_type: str, all_pages: bool, items: int = None, pages: int = None):
         start_date = self.start_date.strftime('%m%d%Y')
         end_date = self.end_date.strftime('%m%d%Y')
         date = f'{start_date}-{end_date}'
 
-        params = {'tickers': symbol,
-                  'items': items,  # Number of news items to fetch
-                  'page': page,  # Pagination for the results
-                  'date': date,
-                  'type': news_type,
-                  'token': self.API_key}
+        if all_pages:
+            pages = np.inf
+            items = 100
 
-        response = requests.get(self.base_url, params=params)
-        response = response.json()
+        page = 1
+        df = pd.DataFrame()
 
-        if 'error' in response:
-            print(f"API Error: {response['error']}")
+        while page <= pages:
+            try:
+                params = {'tickers': symbol,
+                          'items': items,
+                          'page': page,
+                          'date': date,
+                          'type': news_type,
+                          'token': self.API_key}
 
-            return False
+                response = requests.get(self.base_url, params=params)
 
-        response = response['data']
+                response = response.json()['data']
+                response = pd.DataFrame(response)
+                response = response[['date', 'title', 'text', 'source_name', 'sentiment', 'type', 'tickers']]
+                df = pd.concat([df, response] if page > 1 else [response], ignore_index=True)
+                page += 1
 
-        return response
+            except requests.exceptions.RequestException:
+                break
+
+            except KeyError:
+                break
+
+        return df.set_index('date')
