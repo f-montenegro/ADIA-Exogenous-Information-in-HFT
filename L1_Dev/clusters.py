@@ -1,5 +1,3 @@
-import pandas as pd
-
 from L0_Library.config import *
 
 
@@ -9,7 +7,7 @@ class Clusters:
         pass
 
     @staticmethod
-    def get_dates_with_jumps(df_input: pd.DataFrame):
+    def jumps_timestamp(df_input: pd.DataFrame) -> list:
         list_result = []
         for i in df_input.columns:
             if (df_input[i] == 1).any():
@@ -49,17 +47,17 @@ class Clusters:
         s_bernoulli_trials_p = df_input.unstack().dropna().rolling(rolling_window).sum() / rolling_window
         s_bernoulli_trials_p = s_bernoulli_trials_p.reset_index().rename(columns={0: 'jumps'})
 
-        de_result = pd.merge(df_input_unstack, s_bernoulli_trials_p,
+        df_result = pd.merge(df_input_unstack, s_bernoulli_trials_p,
                              on=['Date', 'Hour'], how='left')[['Date', 'Hour', 'jumps_y']]
-        de_result = de_result.rename(columns={'jumps_y': 'jumps'})
+        df_result = df_result.rename(columns={'jumps_y': 'jumps'})
 
-        de_result['jumps'] = de_result.apply(lambda row: self.min_bernoulli_trials_p(row), axis=1)
+        df_result['jumps'] = df_result.apply(lambda row: self.min_bernoulli_trials_p(row), axis=1)
 
-        de_result = de_result.pivot(index='Hour', columns='Date', values=f'jumps')
+        df_result = df_result.pivot(index='Hour', columns='Date', values=f'jumps')
 
         pd.options.display.float_format = '{:,.5f}'.format
 
-        return de_result
+        return df_result
 
     @staticmethod
     def bernoulli_hypothesis_threshold(df_input: pd.DataFrame):
@@ -71,10 +69,10 @@ class Clusters:
 
     @staticmethod
     def cluster_jumps(df_jumps: pd.DataFrame, df_inter_times: pd.DataFrame, df_threshold: pd.DataFrame,
-                      list_dates_w_jumps: list):
+                      l_jumps_timestamp: list):
         df_clustered_jumps = df_jumps.where(df_threshold.notna(), np.nan)
 
-        for i in list_dates_w_jumps:
+        for i in l_jumps_timestamp:
             s_inter_times = df_inter_times[i]
             s_threshold = df_threshold[i]
             s_clustered_jumps = df_clustered_jumps[i]

@@ -30,7 +30,7 @@ class DataPrep:
         self.end_minute = end_minute
         self.time_zone = time_zone
 
-    def get_data(self, symbol):
+    def get_data_mbp(self, symbol):
         """
         Retrieve data from DataBento's schema mbp-10 using class attributes.
 
@@ -80,6 +80,53 @@ class DataPrep:
                 #              'bid_px_01', 'ask_px_01', 'bid_sz_01', 'ask_sz_01']]
                 data = data[['symbol', 'action', 'side', 'depth', 'price', 'size',
                              'bid_px_00', 'ask_px_00', 'bid_sz_00', 'ask_sz_00']]
+                df_result = pd.concat(objs=[df_result, data], axis=0)
+
+        # Convert the timezone of the index to time_zone
+        df_result.index = df_result.index.tz_convert(self.time_zone)
+        # Convert the index to datetime format and remove timezone information
+        df_result.index = pd.to_datetime(df_result.index).tz_localize(None)
+
+        pd.options.display.float_format = '{:,.5f}'.format
+
+        return df_result, trading_days, trading_dates
+
+    def get_data_ohlcv(self, symbol):
+        """
+        """
+        df_result = pd.DataFrame()
+        trading_days = 0
+        trading_dates = []
+
+        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day, self.start_hour,
+                              self.start_minute)
+        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day, self.end_hour, self.end_minute)
+
+        # Number of days between start_date until end_date inclusive on both dates.
+        num_days = (end_date - start_date).days + 1
+
+        for i in tqdm(range(num_days), desc='Processing', ncols=100):
+            start = start_date + timedelta(days=i)
+            end = start_date + timedelta(days=i)
+            end = end.replace(hour=self.end_hour, minute=self.end_minute, second=0, microsecond=0)
+
+            start_iso = pytz.timezone(self.time_zone).localize(start).isoformat()
+            end_iso = pytz.timezone(self.time_zone).localize(end).isoformat()
+
+            # ================================= databento API =================================================
+            client = db.Historical(self.API_key)
+            data = client.timeseries.get_range(dataset=self.dataset,
+                                               start=start_iso,
+                                               end=end_iso,
+                                               symbols=symbol,
+                                               schema='ohlcv-1m')
+            data = data.to_df()
+            # ===================================================================================================
+
+            if len(data.index) != 0:
+                trading_days += 1
+                trading_dates.append(pd.unique(data.index.date)[0])
+                data = data[['symbol', 'open', 'high', 'low', 'close', 'volume']]
                 df_result = pd.concat(objs=[df_result, data], axis=0)
 
         # Convert the timezone of the index to time_zone
