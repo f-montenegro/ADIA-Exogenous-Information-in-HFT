@@ -214,6 +214,29 @@ class DataPrep:
 
         return df_result
 
+    def price_ohlc(self, df_input: pd.DataFrame, price_type: str, resample_freq: str, drop_na: bool):
+        df_result = df_input.copy()[[price_type]]
+
+        if drop_na:
+            df_result = df_result.resample(resample_freq).last().dropna()
+        else:
+            df_result = df_result.resample(resample_freq).last()
+
+        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day, self.start_hour,
+                              self.start_minute)
+        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day, self.end_hour, self.end_minute)
+
+        df_result = df_result[(df_result.index.time >= start_date.time()) & (df_result.index.time < end_date.time())]
+
+        df_result['Date'] = pd.to_datetime(df_result.index.date, format='%m/%d/%Y')
+        df_result['Hour'] = pd.to_datetime(df_result.index.strftime('%H:%M:%S'), format='%H:%M:%S').time
+
+        df_result = df_result.pivot(index='Hour', columns='Date', values=price_type)
+
+        pd.options.display.float_format = '{:,.5f}'.format
+
+        return df_result
+
     @staticmethod
     def col_return(col: pd.Series):
 
