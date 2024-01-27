@@ -2,7 +2,6 @@ from L0_Library.config import *
 
 
 class News:
-
     def __init__(self, base_url: str, API_key: str, start_date: datetime, end_date: datetime):
 
         self.base_url = base_url
@@ -46,3 +45,28 @@ class News:
                 break
 
         return df.set_index('date')
+
+    def get_dummy_news(self, response):
+        date_series = pd.to_datetime(response.reset_index()["date"].unique(), utc=True).sort_values(ascending=True)
+
+        start_hour = pd.to_datetime("09:30:00", format="%H:%M:%S")
+        end_hour = pd.to_datetime("15:59:00", format="%H:%M:%S")
+
+        hour_range = pd.date_range(start=start_hour, end=end_hour, freq="1min")
+        date_range = pd.date_range(start=self.start_date, end=self.end_date, freq="D")
+
+        df_rows = pd.to_datetime(hour_range).strftime('%H:%M:%S')
+        df_cols = pd.to_datetime(date_range).strftime('%Y-%m-%d')
+
+        df = pd.DataFrame(index=df_rows, columns=df_cols)
+        df = df.fillna(0)
+
+        for date in date_series.unique():
+            row = pd.to_datetime(date).replace(second=0).strftime('%H:%M:%S')
+            col = pd.to_datetime(date).strftime('%Y-%m-%d')
+
+            try:
+                df.at[row, col] += 1
+
+            except:
+                continue
