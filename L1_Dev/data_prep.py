@@ -3,26 +3,28 @@ from L0_Library.config import *
 
 class DataPrep:
     """
-    DataPrep class for preparing data using the databento API.
+    DataPrep class for getting and cleaning data using the databento API.
 
     Attributes:
         API_key (str): The API key for accessing the databento API.
-        dataset (str): The name of the dataset.
+        dataset (str): The name of the dataset (require when pulling data from databento).
+        time_zone (str): The time zone to use for data retrieval and processing.
         start_date (datetime): The start date for data retrieval.
         start_hour (int): The start hour for data retrieval.
         start_minute (int): The start minute for data retrieval.
         end_date (datetime): The end date for data retrieval.
         end_hour (int): The end hour for data retrieval.
         end_minute (int): The end minute for data retrieval.
-        time_zone (str): The time zone to use for data retrieval and processing.
     """
 
-    def __init__(self, API_key: str, dataset: str, time_zone: str, start_date: datetime, start_hour: int,
-                 start_minute: int, end_date: datetime, end_hour: int, end_minute: int):
+    def __init__(self,
+                 API_key: str,          dataset: str,     time_zone: str,
+                 start_date: datetime,  start_hour: int,  start_minute: int,
+                 end_date: datetime,    end_hour: int,    end_minute: int):
 
         self.API_key = API_key
         self.dataset = dataset
-        self.start_date = start_date
+        self.start_date = start_date - timedelta(days=40)
         self.start_hour = start_hour
         self.start_minute = start_minute
         self.end_date = end_date
@@ -30,6 +32,11 @@ class DataPrep:
         self.end_minute = end_minute
         self.time_zone = time_zone
 
+    ###############################
+    ######## METHOD 1: MBP ######## (Completed Orderbook)
+    ###############################
+
+    # ===== MBP ===== (Get Data)
     def get_data_mbp(self, symbol):
         """
         Retrieve data from DataBento's schema mbp-10 using class attributes.
@@ -42,13 +49,16 @@ class DataPrep:
             trading_days (int): The number of trading days processed.
             trading_dates (list): A list of trading dates.
         """
+
         df_result = pd.DataFrame()
         trading_days = 0
         trading_dates = []
 
-        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day, self.start_hour,
-                              self.start_minute)
-        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day, self.end_hour, self.end_minute)
+        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day,
+                              self.start_hour, self.start_minute)
+
+        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day,
+                            self.end_hour, self.end_minute)
 
         # Number of days between start_date until end_date inclusive on both dates.
         num_days = (end_date - start_date).days + 1
@@ -68,6 +78,7 @@ class DataPrep:
                                                end=end_iso,
                                                symbols=symbol,
                                                schema='mbp-1')
+
             data = data.to_df()
             data = data.set_index('ts_event')
             # ===================================================================================================
@@ -75,15 +86,15 @@ class DataPrep:
             if len(data.index) != 0:
                 trading_days += 1
                 trading_dates.append(pd.unique(data.index.date)[0])
-                # data = data[['symbol', 'action', 'side', 'depth', 'price', 'size',
-                #              'bid_px_00', 'ask_px_00', 'bid_sz_00', 'ask_sz_00',
-                #              'bid_px_01', 'ask_px_01', 'bid_sz_01', 'ask_sz_01']]
+
                 data = data[['symbol', 'action', 'side', 'depth', 'price', 'size',
                              'bid_px_00', 'ask_px_00', 'bid_sz_00', 'ask_sz_00']]
+
                 df_result = pd.concat(objs=[df_result, data], axis=0)
 
         # Convert the timezone of the index to time_zone
         df_result.index = df_result.index.tz_convert(self.time_zone)
+
         # Convert the index to datetime format and remove timezone information
         df_result.index = pd.to_datetime(df_result.index).tz_localize(None)
 
@@ -91,53 +102,7 @@ class DataPrep:
 
         return df_result, trading_days, trading_dates
 
-    def get_data_ohlcv(self, symbol):
-        """
-        """
-        df_result = pd.DataFrame()
-        trading_days = 0
-        trading_dates = []
-
-        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day, self.start_hour,
-                              self.start_minute)
-        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day, self.end_hour, self.end_minute)
-
-        # Number of days between start_date until end_date inclusive on both dates.
-        num_days = (end_date - start_date).days + 1
-
-        for i in tqdm(range(num_days), desc='Processing', ncols=100):
-            start = start_date + timedelta(days=i)
-            end = start_date + timedelta(days=i)
-            end = end.replace(hour=self.end_hour, minute=self.end_minute, second=0, microsecond=0)
-
-            start_iso = pytz.timezone(self.time_zone).localize(start).isoformat()
-            end_iso = pytz.timezone(self.time_zone).localize(end).isoformat()
-
-            # ================================= databento API =================================================
-            client = db.Historical(self.API_key)
-            data = client.timeseries.get_range(dataset=self.dataset,
-                                               start=start_iso,
-                                               end=end_iso,
-                                               symbols=symbol,
-                                               schema='ohlcv-1m')
-            data = data.to_df()
-            # ===================================================================================================
-
-            if len(data.index) != 0:
-                trading_days += 1
-                trading_dates.append(pd.unique(data.index.date)[0])
-                data = data[['symbol', 'open', 'high', 'low', 'close', 'volume']]
-                df_result = pd.concat(objs=[df_result, data], axis=0)
-
-        # Convert the timezone of the index to time_zone
-        df_result.index = df_result.index.tz_convert(self.time_zone)
-        # Convert the index to datetime format and remove timezone information
-        df_result.index = pd.to_datetime(df_result.index).tz_localize(None)
-
-        pd.options.display.float_format = '{:,.5f}'.format
-
-        return df_result, trading_days, trading_dates
-
+    # ===== MBP ===== (Get Treated Prices DataFrame & Calculate Mid)
     def mid_price(self, df_input: pd.DataFrame, resample_freq: str, type_mid: str, drop_na: bool):
         """
         Calculate the mid-price of a given DataFrame with Limit Order Book data with options to specify the type of
@@ -157,6 +122,7 @@ class DataPrep:
             df_result (pd.DataFrame): A DataFrame containing the calculated mid-price series with date and time
                                       as columns.
         """
+
         df_input = df_input.copy()[['bid_px_00', 'ask_px_00', 'bid_sz_00', 'ask_sz_00']]
         df_result = pd.DataFrame()
 
@@ -214,19 +180,103 @@ class DataPrep:
 
         return df_result
 
-    def price_ohlc(self, df_input: pd.DataFrame, price_type: str, resample_freq: str, drop_na: bool):
+    ################################
+    ######## METHOD 2: OHLC ######## (Trades by minute aggregated by Databento)
+    ################################
+
+    # ===== OHLC ===== (Get Data)
+    def get_data_ohlc(self, symbol):
+        """
+        Retrieve data from DataBento's schema OHLC (Open, High, Low, Close) using class attributes.
+
+        Parameters:
+            symbol (str): The symbol for which to retrieve data.
+
+        Returns:
+            df_result (pd.DataFrame): A DataFrame containing the retrieved data.
+            trading_days (int): The number of trading days processed.
+            trading_dates (list): A list of trading dates.
+        """
+
+        df_result = pd.DataFrame()
+        trading_days = 0
+        trading_dates = []
+
+        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day,
+                              self.start_hour, self.start_minute)
+
+        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day,
+                            self.end_hour, self.end_minute)
+
+        # Number of days between start_date until end_date inclusive on both dates.
+        num_days = (end_date - start_date).days + 1
+
+        for i in tqdm(range(num_days), desc='Processing', ncols=100):
+            start = start_date + timedelta(days=i)
+            end = start_date + timedelta(days=i)
+            end = end.replace(hour=self.end_hour, minute=self.end_minute, second=0, microsecond=0)
+
+            start_iso = pytz.timezone(self.time_zone).localize(start).isoformat()
+            end_iso = pytz.timezone(self.time_zone).localize(end).isoformat()
+
+            # ================================= databento API =================================================
+            client = db.Historical(self.API_key)
+            data = client.timeseries.get_range(dataset=self.dataset,
+                                               start=start_iso,
+                                               end=end_iso,
+                                               symbols=symbol,
+                                               schema='ohlcv-1m')
+            data = data.to_df()
+            # ===================================================================================================
+
+            if len(data.index) != 0:
+                trading_days += 1
+                trading_dates.append(pd.unique(data.index.date)[0])
+                data = data[['symbol', 'open', 'high', 'low', 'close']]
+                df_result = pd.concat(objs=[df_result, data], axis=0)
+
+        # Convert the timezone of the index to time_zone
+        df_result.index = df_result.index.tz_convert(self.time_zone)
+
+        # Convert the index to datetime format and remove timezone information
+        df_result.index = pd.to_datetime(df_result.index).tz_localize(None)
+
+        pd.options.display.float_format = '{:,.5f}'.format
+
+        return df_result, trading_days, trading_dates
+
+    # ===== OHLC ===== (Get Treated Prices DataFrame)
+    def price_ohlc(self, df_input: pd.DataFrame, resample_freq: str, price_type: str, drop_na: bool):
+        """
+        Treat and Standardize OHLC DataFrame gave by Databento OHLC Method.
+
+        Parameters:
+            df_input (pd.DataFrame): The input DataFrame containing OHLC data.
+            resample_freq (str): The resampling frequency for aggregating data (e.g., '1T' for 1-minute bars).
+            price_type (str): Choose one column from OHLC ('open', 'high', 'low', 'close', default is 'close')
+            drop_na (bool): If True, drop rows with missing values after resampling. If False, keep rows with
+                            NaN values.
+
+        Returns:
+            df_result (pd.DataFrame): A DataFrame containing the cleaned prices with date and time as columns.
+        """
+
         df_result = df_input.copy()[[price_type]]
 
         if drop_na:
             df_result = df_result.resample(resample_freq).last().dropna()
+
         else:
             df_result = df_result.resample(resample_freq).last()
 
-        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day, self.start_hour,
-                              self.start_minute)
-        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day, self.end_hour, self.end_minute)
+        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day,
+                              self.start_hour, self.start_minute)
 
-        df_result = df_result[(df_result.index.time >= start_date.time()) & (df_result.index.time < end_date.time())]
+        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day,
+                            self.end_hour, self.end_minute)
+
+        df_result = df_result[(df_result.index.time >= start_date.time()) &
+                              (df_result.index.time < end_date.time())]
 
         df_result['Date'] = pd.to_datetime(df_result.index.date, format='%m/%d/%Y')
         df_result['Hour'] = pd.to_datetime(df_result.index.strftime('%H:%M:%S'), format='%H:%M:%S').time
@@ -237,9 +287,13 @@ class DataPrep:
 
         return df_result
 
+    #####################################
+    ######## METRICS CALCULATION ########
+    #####################################
+
+    # RETURNS
     @staticmethod
     def col_return(col: pd.Series):
-
         log_returns = []
         counter = 1
 
@@ -270,6 +324,7 @@ class DataPrep:
 
         return df_result
 
+    # BIPOWER VARIATION
     @staticmethod
     def bipower_variation(arr: pd.Series, K: int):
         """
@@ -294,6 +349,7 @@ class DataPrep:
         In the paper, they use a rolling time window of length K = 390 (i.e. one day worth of data, but dropping any
         overnight contribution).
         """
+
         bipower_var = (np.pi / (2 * (K - 1))) * np.sum(np.abs(arr) * np.abs(arr.shift(-1)))
 
         return bipower_var
@@ -304,13 +360,15 @@ class DataPrep:
 
         Parameters:
             df_input (pd.DataFrame): Input DataFrame containing time series of returns.
-            K (int): Parameter used in the calculation.
+            K (int): Default value is 390.
 
         Returns:
             df_result (pd.DataFrame): DataFrame containing rolling Bipower Variation values.
         """
+
         df_temp = df_input.unstack()
         df_temp.dropna(inplace=True)
+
         # Calculate the rolling bipower variation using a lambda function
         df_temp = df_temp.rolling(window=K).apply(lambda x: self.bipower_variation(x, K=K))
         df_temp = df_temp.reset_index()
@@ -318,10 +376,69 @@ class DataPrep:
         df_result = df_input.unstack().reset_index().merge(df_temp, on=['Date', 'Hour'], how='left').drop(0, axis=1)
         df_result = df_result.pivot(index='Hour', columns='Date', values=f'bipower_variation')
 
-        pd.options.display.float_format = '{:,.10f}'.format
+        pd.options.display.float_format = '{:,.9f}'.format
 
         return df_result
 
+    # GARMAN-KLASS VARIATION
+    @staticmethod
+    def gk_variation(high, low, close, open_):
+        """
+        Garman-Klass volatility is a method to measure variability that uses OHLC data.
+        """
+
+        log_hl = (np.log(high / low)) ** 2
+        log_co = (np.log(close / open_)) ** 2
+        return (log_hl - (2 * np.log(2) - 1) * log_co).mean()
+
+    def rolling_garman_klass(self, df_ohlc: pd.DataFrame, df_returns: pd.DataFrame, window_size: int):
+        """
+        Calculate the rolling Garman Klass Volatility for a DataFrame of OHLC and its returns for a given window size.
+
+        Parameters:
+            df_ohlc (pd.DataFrame): Input DataFrame containing OHLC data.
+            df_returns (pd.DataFrame): Input DataFrame containing OHLC data returns.
+            window_size (int): Default value is.
+
+        Returns:
+            df_result (pd.DataFrame): DataFrame containing rolling Garman-Klass values.
+        """
+
+        df_ohlc = df_ohlc.resample('1T').last()
+
+        start_date = datetime(self.start_date.year, self.start_date.month, self.start_date.day, self.start_hour,
+                              self.start_minute)
+        end_date = datetime(self.end_date.year, self.end_date.month, self.end_date.day, self.end_hour, self.end_minute)
+
+        df_ohlc = df_ohlc[(df_ohlc.index.time >= start_date.time()) & (df_ohlc.index.time < end_date.time())]
+
+        df_ohlc = df_ohlc[['open', 'high', 'low', 'close']]
+
+        df_ohlc = df_ohlc.dropna()
+
+        gk_volatility = [np.nan] * window_size
+
+        for i in range(1, len(df_ohlc) - window_size + 1):
+            window = df_ohlc.iloc[i:i + window_size]
+            vol = self.gk_variation(window['high'], window['low'], window['close'], window['open'])
+            gk_volatility.append(vol)
+
+        # Convert the result to a Series or DataFrame as needed
+        df_ohlc['gk'] = gk_volatility
+
+        df_ohlc['Date'] = pd.to_datetime(df_ohlc.index.date, format='%m/%d/%Y')
+        df_ohlc['Hour'] = pd.to_datetime(df_ohlc.index.strftime('%H:%M:%S'), format='%H:%M:%S').time
+        df_result = df_returns.unstack().reset_index().merge(df_ohlc, on=['Date', 'Hour'], how='left').drop(0, axis=1)
+
+        df_result = df_result.pivot(index='Hour', columns='Date', values='gk')
+
+        df_result = df_result.where(df_returns.notna(), np.nan)
+
+        pd.options.display.float_format = '{:,.9f}'.format
+
+        return df_result
+
+    # PERIODICITY
     @staticmethod
     def periodicity(row: pd.Series, threshold: float):
         """
@@ -339,6 +456,7 @@ class DataPrep:
             (SD) of all standardized returns belonging to the same local window. It calculates the periodicity measure for
             a single row of standardized returns.
         """
+
         squared_function = lambda x: x ** 2 if not np.isnan(x) else np.nan
         squared_returns = row.apply(squared_function)
 
@@ -371,9 +489,20 @@ class DataPrep:
 
         return df_result
 
+    def final_periodicity_factor(self, df_returns: pd.DataFrame, df_bipower_variation: pd.DataFrame):
+        df_std_returns_1 = df_returns / np.sqrt(df_bipower_variation)
+        df_f0 = self.df_periodicity(df_input=df_std_returns_1, threshold=16)
+        df_std_returns_2 = df_std_returns_1 / df_f0
+        df_f1 = self.df_periodicity(df_input=df_std_returns_2, threshold=6.635)
+        df_f = df_f0 * df_f1
+
+        pd.options.display.float_format = '{:,.5f}'.format
+
+        return df_f
+
+    # JUMPS
     @staticmethod
     def jump_score(df_returns: pd.DataFrame, df_bipower_variation: pd.DataFrame, df_f: pd.DataFrame):
-
         df_result = df_returns / (np.sqrt(df_bipower_variation) * df_f)
 
         pd.options.display.float_format = '{:,.5f}'.format
@@ -391,3 +520,56 @@ class DataPrep:
         pd.options.display.float_format = '{:,.0f}'.format
 
         return df_result
+
+    @staticmethod
+    def jumps_list(df_input: pd.DataFrame):
+        df_result = df_input
+        df_result = pd.DataFrame(df_result.unstack()[df_result.unstack() == 1]).rename(columns={0: 'Jump'})
+
+        pd.options.display.float_format = '{:,.0f}'.format
+
+        return df_result
+
+    ##############################################################################
+    ############################ DataFrame Compilation ###########################
+    ##############################################################################
+
+    def compilation(self, generate_data: bool, df_orders_storage: pd.DataFrame, symbol: str):
+        if generate_data:
+            df_orders = self.get_data_ohlc(symbol)[0]
+        else:
+            df_orders = df_orders_storage
+
+        df_prices = self.price_ohlc(df_orders, resample_freq='1T', price_type='close', drop_na=False)
+        df_returns = self.returns(df_prices)
+
+        df_bpv = self.rolling_bipower_variation(df_returns, K=389)
+        df_periodicity_bpv = self.final_periodicity_factor(df_returns, df_bpv)
+        df_jump_scores_bpv = self.jump_score(df_returns, df_bpv, df_periodicity_bpv)
+        df_jumps_bpv = self.get_jumps(df_jump_scores_bpv)
+        df_jumps_list_bpv = self.jumps_list(df_jumps_bpv)
+
+        df_gk = self.rolling_garman_klass(df_orders, df_returns, window_size=389)
+        df_periodicity_gk = self.final_periodicity_factor(df_returns, df_gk)
+        df_jump_scores_gk = self.jump_score(df_returns, df_gk, df_periodicity_gk)
+        df_jumps_gk = self.get_jumps(df_jump_scores_gk)
+        df_jumps_list_gk = self.jumps_list(df_jumps_gk)
+
+        df_dict = {
+            "prices": df_prices,                            # OHLC (closing) Prices
+            "returns": df_returns,                          # Returns
+            "bipower_variation": df_bpv,                    # Bipower Variation
+
+            "periodicity_bpv": df_periodicity_bpv,          # Periodicity (Bipower Variation)
+            "jump_scores_bpv": df_jump_scores_bpv,          # Jump Scores (Bipower Variation)
+            "jumps_bpv": df_jumps_bpv,                      # Jumps (Bipower Variation)
+            "jumps_list_bpv": df_jumps_list_bpv,            # List of Jumps (Bipower Variation)
+
+            "gk_variation": df_gk,                          # Garman-Klass Variation
+            "periodicity_gk": df_periodicity_gk,            # Periodicity (Garman-Klass Variation)
+            "jump_scores_gk": df_jump_scores_gk,            # Jump Scores (Garman-Klass Variation)
+            "jumps_gk": df_jumps_gk,                        # Jumps (Garman-Klass Variation)
+            "jumps_list_gk": df_jumps_list_gk               # List of Jumps (Garman-Klass Variation)
+        }
+
+        return df_dict
