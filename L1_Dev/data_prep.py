@@ -1,4 +1,5 @@
 from L0_Library.config import *
+from L1_Dev.utils import df_index_columns_correction
 
 
 class DataPrep:
@@ -320,6 +321,12 @@ class DataPrep:
             df_result[column] = self.col_return(df_input[column])
             df_result.columns.name = 'Date'
 
+        # Consider trading days with a moderate or high trading activity
+        max_nan_allowed = 89
+        for column in df_result.columns:
+            if df_result[column].isna().sum() >= max_nan_allowed:
+                df_result[column] = np.nan
+
         pd.options.display.float_format = '{:,.5f}'.format
 
         return df_result
@@ -427,7 +434,11 @@ class DataPrep:
         df_ohlc['gk'] = gk_volatility
 
         df_ohlc['Date'] = pd.to_datetime(df_ohlc.index.date, format='%m/%d/%Y')
-        df_ohlc['Hour'] = pd.to_datetime(df_ohlc.index.strftime('%H:%M:%S'), format='%H:%M:%S').time
+        df_ohlc['Date'] = df_ohlc['Date'].dt.strftime('%Y-%m-%d')
+
+        df_ohlc['Hour'] = pd.to_datetime(df_ohlc.index.strftime('%H:%M:%S'), format='%H:%M:%S')
+        df_ohlc['Hour'] = df_ohlc['Hour'].dt.strftime('%H:%M:%S')
+
         df_result = df_returns.unstack().reset_index().merge(df_ohlc, on=['Date', 'Hour'], how='left').drop(0, axis=1)
 
         df_result = df_result.pivot(index='Hour', columns='Date', values='gk')
@@ -540,19 +551,20 @@ class DataPrep:
         else:
             df_orders = df_orders_storage
 
-        df_prices = self.price_ohlc(df_orders, resample_freq='1T', price_type='close', drop_na=False)
+        df_prices = df_index_columns_correction(self.price_ohlc(df_orders, '1T', 'close', False))
         df_returns = self.returns(df_prices)
+        df_returns = df_index_columns_correction(df_returns)
 
         df_bpv = self.rolling_bipower_variation(df_returns, K=389)
-        df_periodicity_bpv = self.final_periodicity_factor(df_returns, df_bpv)
-        df_jump_scores_bpv = self.jump_score(df_returns, df_bpv, df_periodicity_bpv)
-        df_jumps_bpv = self.get_jumps(df_jump_scores_bpv)
+        df_periodicity_bpv = df_index_columns_correction(self.final_periodicity_factor(df_returns, df_bpv))
+        df_jump_scores_bpv = df_index_columns_correction(self.jump_score(df_returns, df_bpv, df_periodicity_bpv))
+        df_jumps_bpv = df_index_columns_correction(self.get_jumps(df_jump_scores_bpv))
         df_jumps_list_bpv = self.jumps_list(df_jumps_bpv)
 
         df_gk = self.rolling_garman_klass(df_orders, df_returns, window_size=389)
-        df_periodicity_gk = self.final_periodicity_factor(df_returns, df_gk)
-        df_jump_scores_gk = self.jump_score(df_returns, df_gk, df_periodicity_gk)
-        df_jumps_gk = self.get_jumps(df_jump_scores_gk)
+        df_periodicity_gk = df_index_columns_correction(self.final_periodicity_factor(df_returns, df_gk))
+        df_jump_scores_gk = df_index_columns_correction(self.jump_score(df_returns, df_gk, df_periodicity_gk))
+        df_jumps_gk = df_index_columns_correction(self.get_jumps(df_jump_scores_gk))
         df_jumps_list_gk = self.jumps_list(df_jumps_gk)
 
         df_dict = {

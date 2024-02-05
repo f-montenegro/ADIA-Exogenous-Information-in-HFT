@@ -59,8 +59,12 @@ class Classifier:
 
     def compilation(self, df_jumps_clustered_list: pd.DataFrame, df_news_clustered_list: pd.DataFrame):
 
-        df_jumps_news_related = self.jumps_classification(df_jumps_clustered_list, df_news_clustered_list,
-                                                          inf_bound='1', sup_bound='20')
+        df_jumps_news_related = self.jumps_classification(df_jumps_clustered_list,
+                                                          df_news_clustered_list,
+                                                          inf_bound='1',
+                                                          sup_bound='20')
+
+        df_jumps_news_related = df_jumps_news_related.drop_duplicates().reset_index(drop=True)
 
         df_dict = {
             "jumps_news_related": df_jumps_news_related,    # List of Jumps with Classification (News Related or not)

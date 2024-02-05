@@ -4,7 +4,7 @@ from L1_Dev.data_prep import DataPrep
 from L1_Dev.news import News
 from L1_Dev.clusters import Clusters
 from L1_Dev.classifier import Classifier
-from L1_Dev.utils import cluster_date_correction
+from L1_Dev.utils import cluster_date_correction, df_index_columns_correction
 
 
 def get_data(start_date, end_date, ticker):
@@ -40,19 +40,22 @@ def get_data(start_date, end_date, ticker):
 
     ### Jumps
     print("Clustering: Jumps")
-    df_jumps = jumps_dict["jumps_bpv"]
+    df_jumps = df_index_columns_correction(jumps_dict["jumps_bpv"])
     cluster_jumps_dict = cluster.compilation(df_jumps, "Jump")
 
     ### News (cluster in news is missing)
-    print("Clustering: News (Not ready yet, but printing anyway)")
-    # df_news = news_dict["news"]
-    # cluster_news_dict = cluster.compilation(df_news, "News")
+    print("Clustering: News")
+
+    mask_for_news = df_index_columns_correction(jumps_dict["returns"])
+    df_news = news_dict["news"]
+    df_news = df_news.where(mask_for_news.notna(), np.nan)
+    cluster_news_dict = cluster.compilation(df_news, "News")
 
     # Jumps Classification
     print("Jumps Classification")
     classifier = Classifier()
     df_jumps_clustered_list = cluster_jumps_dict["clustered_Jump_list"]
-    df_news_clustered_list = news_dict["news_list"]        ######## cluster_news_dict once cluster in news is ready
+    df_news_clustered_list = cluster_news_dict["clustered_News_list"]
     classifier_dict = classifier.compilation(df_jumps_clustered_list, df_news_clustered_list)
 
     #####################
@@ -63,13 +66,12 @@ def get_data(start_date, end_date, ticker):
     jumps_dict = {key: cluster_date_correction(start_date, df) for key, df in jumps_dict.items()}
     cluster_jumps_dict = {key: cluster_date_correction(start_date, df) for key, df in cluster_jumps_dict.items()}
     news_dict = {key: cluster_date_correction(start_date, df) for key, df in news_dict.items()}
-    # cluster_news_dict = {key: cluster_date_correction(start_date, df) for key, df in cluster_news_dict.items()}
+    cluster_news_dict = {key: cluster_date_correction(start_date, df) for key, df in cluster_news_dict.items()}
     classifier_dict = {key: cluster_date_correction(start_date, df) for key, df in classifier_dict.items()}
 
     compiled_data = {
         "Jumps_Data": {**jumps_dict, **cluster_jumps_dict},
-        # "News_Data": {**news_dict, **cluster_news_dict},
-        "News_Data": {**news_dict},      ######## Replace this line with the one above once cluster in news is ready
+        "News_Data": {**news_dict, **cluster_news_dict},
         "Classifier_Data": {**classifier_dict}
     }
 

@@ -1,4 +1,5 @@
 from L0_Library.config import *
+from L1_Dev.utils import df_index_columns_correction
 
 
 class News:
@@ -92,7 +93,7 @@ class News:
             col = pd.to_datetime(date).strftime('%Y-%m-%d')
 
             try:
-                df_result.at[row, col] += 1
+                df_result.at[row, col] = 1
 
             except requests.exceptions.RequestException:
                 continue
@@ -124,6 +125,8 @@ class News:
             df_raw_news = df_news_storage
 
         df_news = self.get_news(df_raw_news)
+        df_news = df_index_columns_correction(df_news)
+
         df_news_list = self.news_list(df_news)
 
         df_dict = {
